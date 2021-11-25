@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/magiconair/properties"
@@ -14,24 +15,21 @@ import (
 )
 
 type hbaseDB struct {
-	kvStore
+	*tiap_client.HBaseTable
+	r       *util.RowCodec
+	bufPool *util.BufPool
 }
 
 func createHBaseDB(p *properties.Properties, dbName, tableName, token string) (ycsb.DB, error) {
 	pdAddr := p.GetString(kvstoreApAddr, "127.0.0.1:3379")
-	db := tiap_client.NewKVClient(pdAddr)
+	table := tiap_client.OpenHBaseTable(pdAddr, dbName, tableName, token)
 
 	bufPool := util.NewBufPool()
 
 	return &hbaseDB{
-		kvStore{
-			db:      db,
-			r:       util.NewRowCodec(p),
-			bufPool: bufPool,
-			dbName: dbName,
-			tableName: tableName,
-			token: token,
-		},
+		HBaseTable: table,
+		r:       util.NewRowCodec(p),
+		bufPool: bufPool,
 	}, nil
 }
 
@@ -105,8 +103,7 @@ func columnValuesDecode(colVals *tiap_hbaselike_kvrpcpb.ColumnValues, fields []s
 
 func (db *hbaseDB) Read(ctx context.Context, table string, key string, fields []string) (map[string][]byte, error) {
 	family := genColumnFamily(fields)
-	rows, err := db.db.BatchGetRow(ctx, db.dbName, db.tableName, db.token, db.appName,
-		[][]byte{[]byte(key)}, family)
+	rows, err := db.HBaseTable.BatchGetRow(ctx, [][]byte{[]byte(key)}, family)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +120,7 @@ func (db *hbaseDB) Read(ctx context.Context, table string, key string, fields []
 func (db *hbaseDB) BatchRead(ctx context.Context, table string, keys []string, fields []string) ([]map[string][]byte, error) {
 	rowKeys := genRowKeys(keys)
 	cf := genColumnFamily(fields)
-	values, err := db.db.BatchGetRow(ctx, db.dbName, db.tableName, db.token, db.appName, rowKeys, cf)
+	values, err := db.HBaseTable.BatchGetRow(ctx, rowKeys, cf)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +135,7 @@ func (db *hbaseDB) BatchRead(ctx context.Context, table string, keys []string, f
 
 func (db *hbaseDB) Scan(ctx context.Context, table string, startKey string, count int, fields []string) ([]map[string][]byte, error) {
 	cf := genColumnFamily(fields)
-	rows, err := db.db.ScanRow(ctx, db.dbName, db.tableName, db.token, db.appName,
-		db.getRowKey(table, startKey), nil, cf, int64(count))
+	rows, err := db.HBaseTable.ScanRow(ctx, db.getRowKey(table, startKey), nil, cf, int64(count))
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +159,7 @@ func (db *hbaseDB) Update(ctx context.Context, table string, key string, values 
 		fields = append(fields, f)
 	}
 	cf := genColumnFamily(fields)
-	rows, err := db.db.BatchGetRow(ctx, db.dbName, db.tableName, db.token, db.appName, [][]byte{[]byte(key)}, cf)
+	rows, err := db.HBaseTable.BatchGetRow(ctx, [][]byte{[]byte(key)}, cf)
 	if err != nil {
 		return nil
 	}
@@ -194,7 +190,7 @@ func (db *hbaseDB) BatchUpdate(ctx context.Context, table string, keys []string,
 	}
 	rowKeys := genRowKeys(keys)
 	rowVals := genRowValues(rowKeys, values)
-	return db.db.BatchPutRow(ctx, db.dbName, db.tableName, db.token, db.appName, rowVals)
+	return db.HBaseTable.BatchPutRow(ctx, rowVals)
 }
 
 func genRowValues(rowKeys [][]byte, columnValuesArr []map[string][]byte) (rowVals []*tiap_hbaselike_kvrpcpb.RowValue) {
@@ -236,20 +232,24 @@ func genRowKeys(keys []string) [][]byte {
 
 func (db *hbaseDB) Insert(ctx context.Context, table string, key string, values map[string][]byte) error {
 	rowVals := genRowValues([][]byte{[]byte(key)}, []map[string][]byte{values})
-	return db.db.BatchPutRow(ctx, db.dbName, db.tableName, db.token, db.appName, rowVals)
+	err := db.HBaseTable.BatchPutRow(ctx, rowVals)
+	if err != nil {
+		fmt.Println("hbase insert error: ", err)
+	}
+	return err
 }
 
 func (db *hbaseDB) BatchInsert(ctx context.Context, table string, keys []string, values []map[string][]byte) error {
 	rowKeys := genRowKeys(keys)
 	rowVals := genRowValues(rowKeys, values)
-	return db.db.BatchPutRow(ctx, db.dbName, db.tableName, db.token, db.appName, rowVals)
+	return db.HBaseTable.BatchPutRow(ctx, rowVals)
 }
 
 func (db *hbaseDB) Delete(ctx context.Context, table string, key string) error {
-	return db.db.BatchDeleteRow(ctx, db.dbName, db.tableName, db.token, db.appName, [][]byte{[]byte(key)})
+	return db.HBaseTable.BatchDeleteRow(ctx, [][]byte{[]byte(key)})
 }
 
 func (db *hbaseDB) BatchDelete(ctx context.Context, table string, keys []string) error {
 	rowKeys := genRowKeys(keys)
-	return db.db.BatchDeleteRow(ctx, db.dbName, db.tableName, db.token, db.appName, rowKeys)
+	return db.HBaseTable.BatchDeleteRow(ctx, rowKeys)
 }

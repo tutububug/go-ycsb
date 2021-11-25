@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -26,8 +27,6 @@ import (
 	"github.com/magiconair/properties"
 
 	// Register workload
-
-	"fmt"
 
 	"github.com/pingcap/go-ycsb/pkg/client"
 	"github.com/pingcap/go-ycsb/pkg/measurement"
@@ -47,8 +46,10 @@ import (
 	_ "github.com/pingcap/go-ycsb/db/pg"
 	// Register Aerospike database
 	_ "github.com/pingcap/go-ycsb/db/aerospike"
-	// Register Badger database
-	_ "github.com/pingcap/go-ycsb/db/badger"
+//Register Badger database
+	//_ "github.com/pingcap/go-ycsb/db/badger"
+	//Register kvstore database
+	_ "github.com/pingcap/go-ycsb/db/kvstore"
 	// Register RocksDB database
 	_ "github.com/pingcap/go-ycsb/db/rocksdb"
 	// Register Spanner database

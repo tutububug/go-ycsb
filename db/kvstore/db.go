@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/magiconair/properties"
-	"github.com/pingcap/go-ycsb/pkg/util"
 	"github.com/pingcap/go-ycsb/pkg/ycsb"
-	tiap_client "github.com/tutububug/tiap/client"
+	"github.com/tutububug/tiap/config"
+	"github.com/tutububug/tiap/log"
 )
 
 const (
@@ -22,20 +22,13 @@ const (
 
 )
 
-type kvStore struct {
-	db      *tiap_client.KVClient
-	r       *util.RowCodec
-	bufPool *util.BufPool
-	dbName string
-	tableName string
-	token string
-	appName string
-}
-
 type kvstoreCreator struct {
 }
 
 func (c kvstoreCreator) Create(p *properties.Properties) (ycsb.DB, error) {
+	// init log
+	log.NewLogger(&config.LogConfig{})
+
 	dbName := p.GetString(kvstoreDbName, "")
 	tableName := p.GetString(kvstoreTableName, "")
 	token := p.GetString(kvstoreToken, "")
